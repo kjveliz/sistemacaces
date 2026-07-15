@@ -22,6 +22,8 @@ import {
   obtenerEvidenciasCompartidas,
   subirPdfGoogleDrive,
   leerMatriculadosPdf,
+  leerPdfTitulacion,
+  guardarDatoTitulacion,
 } from "../services/evidencias";
 
 import {
@@ -330,16 +332,7 @@ useEffect(() => {
         return { ...ind, slots: ind.slots.map((s) => s.sharedKey === updated.sharedKey ? syncedSlot : s) };
       }
       const newSlots = ind.slots.map((s) => s.sourceNum === updated.sourceNum ? updated : s);
-      let newCohorts = ind.cohorts;
-      if ((indId === "I5" || indId === "I4") && !ind.cohorts.length) {
-        const s1 = newSlots.find((s) => s.sourceNum === 1)?.file;
-        const s2 = newSlots.find((s) => s.sourceNum === 2)?.file;
-        if (s1 && s2) newCohorts = [
-          { period: "B 2025", enrolled: 40, graduated: 32 },
-          { period: "A 2025", enrolled: 35, graduated: 18 },
-        ];
-      }
-      return { ...ind, slots: newSlots, cohorts: newCohorts };
+      return { ...ind, slots: newSlots};
     }));
   }
   
@@ -440,7 +433,74 @@ if (slot.codigoEvidencia === "DOC.TIT.02") {
       career.code,
       cohort.replace(/\s+/g, ""),
     );
+    let resultadoTitulacion:
+  | {
+      total: number;
+      tipo:
+        | "matriculados"
+        | "graduados";
+      tasa: number | null;
+    }
+  | null = null;
 
+if (
+  indicator.id === "I5" &&
+  (
+    slot.codigoEvidencia === "DOC.TIT.01" ||
+    slot.codigoEvidencia === "DOC.TIT.02"
+  )
+) {
+  /*
+   * Según tu catálogo:
+   * DOC.TIT.01 = estudiantes graduados
+   * DOC.TIT.02 = estudiantes matriculados.
+   */
+  const tipoDato =
+    slot.codigoEvidencia === "DOC.TIT.01"
+      ? "graduados"
+      : "matriculados";
+
+  const lectura = await leerPdfTitulacion(
+    archivo,
+    tipoDato,
+  );
+
+  const cohorteNormalizada =
+    cohort.replace(/\s+/g, "").toUpperCase();
+
+  if (
+    lectura.cohorte_detectada &&
+    lectura.cohorte_detectada !==
+      cohorteNormalizada
+  ) {
+    throw new Error(
+      `El PDF corresponde a la cohorte ${lectura.cohorte_detectada}, pero está seleccionada la cohorte ${cohorteNormalizada}.`,
+    );
+  }
+
+  const guardadoTitulacion =
+    await guardarDatoTitulacion({
+      idEvaluacion:
+        evaluacion.id_evaluacion,
+      cohorte: cohorteNormalizada,
+      ...(tipoDato === "matriculados"
+        ? {
+            matriculados:
+              lectura.total,
+          }
+        : {
+            graduados:
+              lectura.total,
+          }),
+    });
+
+  resultadoTitulacion = {
+    total: lectura.total,
+    tipo: tipoDato,
+    tasa:
+      guardadoTitulacion.tasa,
+  };
+}
     /*
      * 4. Registrar o actualizar inmediatamente
      * la URL de Google Drive en MySQL.
@@ -487,10 +547,27 @@ if (slot.codigoEvidencia === "DOC.TIT.02") {
     toast.success(
       "PDF guardado correctamente",
       {
-        description:
-          matriculadosDetectados !== null
-            ? `Google Drive y MySQL actualizados. Matriculados detectados: ${matriculadosDetectados}.`
-            : "El documento se subió a Google Drive y su URL se actualizó en MySQL.",
+      description: resultadoTitulacion
+      ? resultadoTitulacion.tasa !== null
+        ? `${
+            resultadoTitulacion.tipo ===
+            "matriculados"
+              ? "Matriculados"
+              : "Graduados"
+          } detectados: ${
+            resultadoTitulacion.total
+          }. Tasa calculada: ${
+            resultadoTitulacion.tasa
+          }%.`
+        : `${
+            resultadoTitulacion.tipo ===
+            "matriculados"
+              ? "Matriculados"
+              : "Graduados"
+          } detectados: ${
+            resultadoTitulacion.total
+          }. Falta el otro PDF para calcular la tasa.`
+      : "El documento se subió a Google Drive y su URL se actualizó en MySQL.",  
       },
     );
   } catch (error) {

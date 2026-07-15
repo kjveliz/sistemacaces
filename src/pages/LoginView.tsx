@@ -1,4 +1,7 @@
-import { iniciarSesion } from "../services/auth";
+import {
+  iniciarSesion,
+  type UsuarioSesion,
+} from "../services/auth";
 
 import { useState } from "react";
 import {
@@ -8,7 +11,7 @@ import {
 } from "lucide-react";
 
 interface LoginViewProps {
-  onLogin: () => void;
+  onLogin: (usuario: UsuarioSesion) => void;
 }
 
 export default function LoginView({
@@ -41,7 +44,7 @@ export default function LoginView({
       return;
     }
 
-    onLogin();
+    onLogin(respuesta.usuario);
   } catch (error) {
     setErr(
       error instanceof Error

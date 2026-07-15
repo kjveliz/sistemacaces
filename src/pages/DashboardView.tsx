@@ -8,13 +8,14 @@ import {
   LogOut,
   ShieldCheck,
   Upload,
+  User,
 } from "lucide-react";
 
 import IndCard from "../app/components/IndCard";
 import PaoGroupCard from "../app/components/PaoGroupCard";
-
 import { COHORT_OPTIONS } from "../data/academic";
 
+import type { UsuarioSesion } from "../services/auth";
 import type {
   Career,
   IndicatorDef,
@@ -29,6 +30,8 @@ interface DashboardViewProps {
   cohort: string;
   onCohortChange: (cohort: string) => void;
   onBackToCareers: () => void;
+  usuario: UsuarioSesion;
+  puedeCargar: boolean;
 }
 
 export default function DashboardView({
@@ -40,6 +43,8 @@ export default function DashboardView({
   cohort,
   onCohortChange,
   onBackToCareers,
+  usuario,
+  puedeCargar,
 }: DashboardViewProps) {
   const [cohortOpen, setCohortOpen] = useState(false);
 
@@ -62,21 +67,14 @@ export default function DashboardView({
         <div className="flex items-center gap-3">
           <div
             className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{
-              background: "#1B3A6B",
-            }}
+            style={{ background: "#1B3A6B" }}
           >
-            <ShieldCheck
-              size={13}
-              className="text-white"
-            />
+            <ShieldCheck size={13} className="text-white" />
           </div>
 
           <span
             className="font-bold text-sm"
-            style={{
-              color: "#0F1E3C",
-            }}
+            style={{ color: "#0F1E3C" }}
           >
             CACES · UAFTT
           </span>
@@ -85,9 +83,7 @@ export default function DashboardView({
             type="button"
             onClick={onBackToCareers}
             className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
-            style={{
-              color: "#1B3A6B",
-            }}
+            style={{ color: "#1B3A6B" }}
           >
             <ArrowLeft size={12} />
             Carreras
@@ -95,9 +91,7 @@ export default function DashboardView({
 
           <span
             className="hidden sm:inline text-xs"
-            style={{
-              color: "#9CA3AF",
-            }}
+            style={{ color: "#9CA3AF" }}
           >
             — {career.name}
           </span>
@@ -117,13 +111,9 @@ export default function DashboardView({
             >
               <span
                 className="w-1.5 h-1.5 rounded-full"
-                style={{
-                  background: "#1B3A6B",
-                }}
+                style={{ background: "#1B3A6B" }}
               />
-
               Cohorte {cohort}
-
               <ChevronDown
                 size={12}
                 className={`transition-transform ${
@@ -160,13 +150,10 @@ export default function DashboardView({
                     }}
                   >
                     Cohorte {option}
-
                     {option === cohort && (
                       <CheckCircle2
                         size={12}
-                        style={{
-                          color: "#1B3A6B",
-                        }}
+                        style={{ color: "#1B3A6B" }}
                       />
                     )}
                   </button>
@@ -175,26 +162,44 @@ export default function DashboardView({
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={onUpload}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90 active:scale-95"
-            style={{
-              background: "#1B3A6B",
-              color: "#fff",
-            }}
-          >
-            <Upload size={12} />
-            Cargar evidencias
-          </button>
+          {puedeCargar && (
+            <button
+              type="button"
+              onClick={onUpload}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90 active:scale-95"
+              style={{
+                background: "#1B3A6B",
+                color: "#fff",
+              }}
+            >
+              <Upload size={12} />
+              Cargar evidencias
+            </button>
+          )}
+
+          <div className="hidden lg:flex items-center gap-2 px-2">
+            <User size={12} style={{ color: "#5A7295" }} />
+            <div className="leading-tight text-right">
+              <p
+                className="text-xs font-semibold"
+                style={{ color: "#0F1E3C" }}
+              >
+                {usuario.nombres} {usuario.apellidos}
+              </p>
+              <p
+                className="text-[10px] capitalize"
+                style={{ color: "#5A7295" }}
+              >
+                {usuario.rol}
+              </p>
+            </div>
+          </div>
 
           <button
             type="button"
             onClick={onLogout}
             className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 transition-colors"
-            style={{
-              color: "#5A7295",
-            }}
+            style={{ color: "#5A7295" }}
           >
             <LogOut size={12} />
             Salir
@@ -204,22 +209,13 @@ export default function DashboardView({
 
       <div className="flex-shrink-0 px-6 pt-4 pb-2">
         <div className="flex items-center gap-2 mb-0.5">
-          <BookOpen
-            size={12}
-            style={{
-              color: "#2563EB",
-            }}
-          />
-
+          <BookOpen size={12} style={{ color: "#2563EB" }} />
           <span
             className="text-xs font-bold uppercase tracking-widest"
-            style={{
-              color: "#2563EB",
-            }}
+            style={{ color: "#2563EB" }}
           >
             Criterio de evaluación
           </span>
-
           <span
             className="ml-2 text-xs px-2 py-0.5 rounded-full font-semibold"
             style={{
@@ -244,25 +240,12 @@ export default function DashboardView({
 
       <div className="flex-1 min-h-0 px-6 pb-5 flex flex-col gap-3 overflow-hidden">
         <div className="flex gap-3 flex-1 min-h-0">
-          <PaoGroupCard
-            ind={indicators[0]}
-            onClick={onSelect}
-          />
-
-          <PaoGroupCard
-            ind={indicators[1]}
-            onClick={onSelect}
-          />
+          <PaoGroupCard ind={indicators[0]} onClick={onSelect} />
+          <PaoGroupCard ind={indicators[1]} onClick={onSelect} />
         </div>
 
         <div className="flex gap-3 flex-1 min-h-0">
-          <div
-            className="h-full"
-            style={{
-              flex: 2,
-              minWidth: 0,
-            }}
-          >
+          <div className="h-full" style={{ flex: 2, minWidth: 0 }}>
             <PaoGroupCard
               ind={indicators[2]}
               onClick={onSelect}
@@ -272,16 +255,12 @@ export default function DashboardView({
 
           <IndCard
             ind={indicators[3]}
-            onClick={() =>
-              onSelect(indicators[3].id)
-            }
+            onClick={() => onSelect(indicators[3].id)}
           />
 
           <IndCard
             ind={indicators[4]}
-            onClick={() =>
-              onSelect(indicators[4].id)
-            }
+            onClick={() => onSelect(indicators[4].id)}
           />
         </div>
       </div>

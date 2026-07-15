@@ -1,12 +1,17 @@
-import { useState } from "react";
 import { Toaster } from "sonner";
+import {
+  obtenerEvaluacion,
+  obtenerDatosTasa,
+} from "../services/evidencias";
 
+import { useEffect, useState } from "react";
 import EvidenceUploadView from "../pages/EvidenceUploadView";
 import DashboardView from "../pages/DashboardView";
 import IndicatorView from "../pages/IndicatorView";
 import CriteriaView from "../pages/CriteriaView";
 import CareersView from "../pages/CareersView";
 import LoginView from "../pages/LoginView";
+import type { UsuarioSesion } from "../services/auth";
 
 import type {
   View,
@@ -186,6 +191,9 @@ function makeIndicators(
 
 // ── App ──────────────────────────────────────────────────────
 export default function App() {
+  const [usuario, setUsuario] =
+    useState<UsuarioSesion | null>(null);
+
   const [view, setView] =
     useState<View>("login");
 
@@ -206,11 +214,119 @@ export default function App() {
   const [selectedPAO, setSelectedPAO] =
     useState<number>(1);
 
-  const [idEvaluacion, setIdEvaluacion] = useState<number>(0);
   const selected = indicators.find(
     (indicator) =>
       indicator.id === selectedId,
   );
+
+  const puedeCargar =
+    usuario?.rol === "administrador" ||
+    usuario?.rol === "coordinador";
+
+  useEffect(() => {
+  if (
+    view !== "dashboard" ||
+    !career
+  ) {
+    return;
+  }
+
+  const carreraActual = career;
+
+  let cancelado = false;
+
+  async function cargarResultadoTitulacion() {
+    try {
+      const cohorteNormalizada =
+        selectedCohort
+          .replace(/\s+/g, "")
+          .toUpperCase();
+
+      const evaluacion =
+        await obtenerEvaluacion(
+          carreraActual.code,
+          cohorteNormalizada,
+        );
+
+      const datos =
+        await obtenerDatosTasa(
+          evaluacion.id_evaluacion,
+        );
+
+      if (cancelado) {
+        return;
+      }
+
+      const registroActual = datos.find(
+        (dato) =>
+          dato.cohorte
+            .replace(/\s+/g, "")
+            .toUpperCase() ===
+          cohorteNormalizada,
+      );
+
+      setIndicators((actuales) =>
+        actuales.map((indicator) => {
+          if (indicator.id !== "I5") {
+            return indicator;
+          }
+
+          if (!registroActual) {
+            return {
+              ...indicator,
+              cohorts: [],
+            };
+          }
+
+          return {
+            ...indicator,
+            cohorts: [
+              {
+                period: selectedCohort,
+                enrolled:
+                  Number(
+                    registroActual.matriculados,
+                  ) || 0,
+                graduated:
+                  Number(
+                    registroActual.graduados,
+                  ) || 0,
+              },
+            ],
+          };
+        }),
+      );
+    } catch (error) {
+      console.error(
+        "No se pudo cargar el resultado del indicador I5:",
+        error,
+      );
+
+      if (!cancelado) {
+        setIndicators((actuales) =>
+          actuales.map((indicator) =>
+            indicator.id === "I5"
+              ? {
+                  ...indicator,
+                  cohorts: [],
+                }
+              : indicator,
+          ),
+        );
+      }
+    }
+  }
+
+  void cargarResultadoTitulacion();
+
+  return () => {
+    cancelado = true;
+  };
+}, [
+  view,
+  career,
+  selectedCohort,
+]);
 
   function selectCareer(
     selectedCareer: Career,
@@ -241,19 +357,19 @@ export default function App() {
   }
 
   function handleUpload() {
-    /*
-     * Al ingresar desde el panel general se permite
-     * seleccionar cualquiera de los indicadores.
-     */
+    if (!puedeCargar) {
+      return;
+    }
+
     setSelectedId(null);
     setView("evidUpload");
   }
 
   function handleIndicatorUpload() {
-    /*
-     * Al ingresar desde un indicador concreto,
-     * se conserva selectedId.
-     */
+    if (!puedeCargar) {
+      return;
+    }
+
     setView("evidUpload");
   }
 
@@ -294,6 +410,7 @@ export default function App() {
   }
 
   function handleLogout() {
+    setUsuario(null);
     setCareer(null);
     setIndicators([]);
     setSelectedId(null);
@@ -311,16 +428,18 @@ export default function App() {
 
       {view === "login" && (
         <LoginView
-          onLogin={() =>
-            setView("careers")
-          }
+          onLogin={(usuarioAutenticado) => {
+            setUsuario(usuarioAutenticado);
+            setView("careers");
+          }}
         />
       )}
 
-      {view === "careers" && (
+      {view === "careers" && usuario && (
         <CareersView
           onSelect={selectCareer}
           onLogout={handleLogout}
+          usuario={usuario}
         />
       )}
 
@@ -353,10 +472,12 @@ export default function App() {
           onBackToCareers={
             handleBackToCareers
           }
+          usuario={usuario!}
+          puedeCargar={Boolean(puedeCargar)}
         />
       )}
 
-      {view === "evidUpload" && career && (
+      {view === "evidUpload" && career && puedeCargar && (
         <EvidenceUploadView
           career={career}
           indicators={indicators}
@@ -391,6 +512,7 @@ export default function App() {
             onUpload={
               handleIndicatorUpload
             }
+            puedeCargar={Boolean(puedeCargar)}
           />
         )}
     </>

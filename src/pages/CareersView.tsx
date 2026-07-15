@@ -1,9 +1,12 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
-
+import UsersManagementModal from "./UsersManagementModal";
+import CohortsManagementModal from "./CohortsManagementModal";
 import {
   AlertCircle,
+  CalendarDays,
   ChevronDown,
+  Users,
   LogOut,
   Plus,
   ShieldCheck,
@@ -22,22 +25,28 @@ import type {
   Career,
   CareerArea,
 } from "../types";
+import type { UsuarioSesion } from "../services/auth";
 
 interface CareersViewProps {
   onSelect: (career: Career) => void;
   onLogout: () => void;
+  usuario: UsuarioSesion;
 }
 
 export default function CareersView({
   onSelect,
   onLogout,
+  usuario,
 }: CareersViewProps) {
   const [areas, setAreas] = useState<CareerArea[]>(AREAS);
 
   const [showNewCareer, setShowNewCareer] = useState(false);
   const [showDeleteCareer, setShowDeleteCareer] = useState(false);
   const [showManageMenu, setShowManageMenu] = useState(false);
-
+  const [showUsersManagement, setShowUsersManagement] =
+    useState(false);
+  const [showCohortsManagement, setShowCohortsManagement] =
+    useState(false);
   const [newCareerName, setNewCareerName] = useState("");
   const [newCareerArea, setNewCareerArea] = useState("");
   const [newCareerFile, setNewCareerFile] =
@@ -47,6 +56,18 @@ export default function CareersView({
   const [deleteCareer, setDeleteCareer] = useState("");
 
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /*
+   * Identificadores reales de la tabla carreras.
+   * Actualmente Desarrollo de Software corresponde a id_carrera = 1.
+   * Cuando agregues más carreras en MySQL, añade aquí sus IDs reales.
+   */
+  const carrerasAdministrables = [
+    {
+      id: 1,
+      nombre: "Desarrollo de Software",
+    },
+  ];
 
   const deletableCareers = deleteArea
     ? areas.find((area) => area.name === deleteArea)?.careers ?? []
@@ -135,6 +156,20 @@ export default function CareersView({
         fontFamily: "'Plus Jakarta Sans',sans-serif",
       }}
     >
+      <UsersManagementModal
+        open={showUsersManagement}
+        onClose={() =>
+          setShowUsersManagement(false)
+        }
+      />
+
+      <CohortsManagementModal
+        open={showCohortsManagement}
+        onClose={() =>
+          setShowCohortsManagement(false)
+        }
+        carreras={carrerasAdministrables}
+      />
       {/* Modal: eliminar carrera */}
       {showDeleteCareer && (
         <div
@@ -604,6 +639,7 @@ export default function CareersView({
         </div>
 
         <div className="flex items-center gap-3">
+          {usuario.rol === "administrador" && (
           <div className="relative">
             <button
               type="button"
@@ -618,7 +654,7 @@ export default function CareersView({
             >
               <TableProperties size={12} />
 
-              Gestionar Carreras
+              Gestionar
 
               <ChevronDown
                 size={11}
@@ -661,6 +697,50 @@ export default function CareersView({
                   type="button"
                   onClick={() => {
                     setShowManageMenu(false);
+                    setShowCohortsManagement(true);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-xs font-semibold hover:bg-blue-50 transition-colors flex items-center gap-2"
+                  style={{
+                    color: "#1B3A6B",
+                  }}
+                >
+                  <CalendarDays size={13} />
+                  Gestionar cohortes
+                </button>
+
+                <div
+                  style={{
+                    height: 1,
+                    background: "rgba(27,58,107,0.07)",
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowManageMenu(false);
+                    setShowUsersManagement(true);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-xs font-semibold hover:bg-blue-50 transition-colors flex items-center gap-2"
+                  style={{
+                    color: "#1B3A6B",
+                  }}
+                >
+                  <Users size={13} />
+                  Gestionar usuarios
+                </button>
+
+                <div
+                  style={{
+                    height: 1,
+                    background: "rgba(27,58,107,0.07)",
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowManageMenu(false);
                     setShowDeleteCareer(true);
                   }}
                   className="w-full text-left px-4 py-2.5 text-xs font-semibold hover:bg-red-50 transition-colors flex items-center gap-2"
@@ -674,15 +754,29 @@ export default function CareersView({
               </div>
             )}
           </div>
+          )}
 
           <div
-            className="hidden sm:flex items-center gap-1.5 text-xs"
+            className="hidden sm:flex items-center gap-2 text-xs"
             style={{
               color: "#5A7295",
             }}
           >
-            <User size={12} />
-            <span>Docente Evaluador</span>
+            <User size={13} />
+            <div className="leading-tight text-right">
+              <p
+                className="font-semibold"
+                style={{ color: "#0F1E3C" }}
+              >
+                {usuario.nombres} {usuario.apellidos}
+              </p>
+              <p
+                className="capitalize"
+                style={{ color: "#5A7295", fontSize: 10 }}
+              >
+                {usuario.rol}
+              </p>
+            </div>
           </div>
 
           <button

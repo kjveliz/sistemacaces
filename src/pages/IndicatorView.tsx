@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import {
   obtenerDatosTasa,
+  obtenerEvaluacion,
+  obtenerEvidenciasCompartidas,
+  obtenerEvidenciasGuardadas,
   type CohorteTitulacion,
 } from "../services/evidencias";
 import {
@@ -50,13 +52,14 @@ import type {
   TabId,
 } from "../types";
 
-export default function IndicatorView({ indicator, onBack, career, cohort, pao, onUpload }: {
+export default function IndicatorView({ indicator, onBack, career, cohort, pao, onUpload, puedeCargar }: {
   indicator: IndicatorDef;
   onBack: () => void;
   career: Career | null;
   cohort: string;
   pao: number;
   onUpload?: () => void;
+  puedeCargar: boolean;
 }) {
   const isTitDes = indicator.id === "I4" || indicator.id === "I5";
   const isI2 = indicator.id === "I2";
@@ -107,11 +110,21 @@ export default function IndicatorView({ indicator, onBack, career, cohort, pao, 
         {tab === "results"   && isI2  && <TabResults    ind={indicator} career={career} cohort={cohort} pao={pao} />}
         {tab === "results"   && isI3  && <TabResultsI3  ind={indicator} career={career} cohort={cohort} pao={pao} />}
         {tab === "cohorts" && (
-  <TabCohorts
-    ind={indicator}
-  />
-)}
-        {tab === "evidences" && <TabEvidences ind={indicator} onUpload={onUpload} />}
+          <TabCohorts
+            ind={indicator}
+            career={career}
+            cohort={cohort}
+          />
+        )}
+        {tab === "evidences" && (
+          <TabEvidences
+            ind={indicator}
+            career={career}
+            cohort={cohort}
+            onUpload={onUpload}
+            puedeCargar={puedeCargar}
+          />
+        )}
         {tab === "ficha"     && <TabFicha     ind={indicator} />}
       </div>
     </div>
@@ -422,37 +435,71 @@ function TabResultsI3({ ind, career, cohort, pao }: { ind: IndicatorDef; career:
 }
 
 // ── Tab Cohortes ───────────────────────────────────────────────────────────
-  function TabCohorts({
+function TabCohorts({
   ind,
+  career,
+  cohort,
 }: {
   ind: IndicatorDef;
+  career: Career | null;
+  cohort: string;
 }) {
   const [datos, setDatos] = useState<CohorteTitulacion[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
 
   useEffect(() => {
-    cargar();
-  }, []);
+    void cargar();
+  }, [career?.code, cohort, ind.id]);
 
   async function cargar() {
+    setCargando(true);
+    setErrorCarga("");
+
     try {
-        const respuesta = await obtenerDatosTasa(1);
-        setDatos(respuesta);
+      if (ind.id !== "I5") {
+        setDatos([]);
+        return;
+      }
+
+      if (!career) {
+        throw new Error("No se ha seleccionado una carrera.");
+      }
+
+      const cohorteNormalizada = cohort.replace(/\s+/g, "");
+
+      const evaluacion = await obtenerEvaluacion(
+        career.code,
+        cohorteNormalizada,
+      );
+
+      const respuesta = await obtenerDatosTasa(
+        evaluacion.id_evaluacion,
+      );
+
+      setDatos(respuesta);
     } catch (error) {
       console.error(error);
-      toast.error("No se pudieron cargar los datos.");
+
+      const mensaje =
+        error instanceof Error
+          ? error.message
+          : "No se pudieron cargar los datos de cohortes.";
+
+      setErrorCarga(mensaje);
+      setDatos([]);
     } finally {
       setCargando(false);
     }
   }
 
   const totalMatriculados = datos.reduce(
-    (s, c) => s + Number(c.matriculados),
+    (suma, item) => suma + Number(item.matriculados ?? 0),
     0,
   );
 
   const totalGraduados = datos.reduce(
-    (s, c) => s + Number(c.graduados),
+    (suma, item) => suma + Number(item.graduados ?? 0),
     0,
   );
 
@@ -464,123 +511,200 @@ function TabResultsI3({ ind, career, cohort, pao }: { ind: IndicatorDef; career:
         );
 
   return (
-    <div className="h-full px-6 py-5 overflow-auto">
+    <div className="h-full flex flex-col px-6 py-4 max-w-4xl mx-auto overflow-hidden">
       <div
-        className="bg-white rounded-2xl overflow-hidden"
+        className="bg-white rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col"
         style={{
           border: "1px solid rgba(27,58,107,0.08)",
         }}
       >
         <div
-          className="px-5 py-4 flex items-center justify-between"
+          className="px-6 py-4 flex-shrink-0"
           style={{
-            borderBottom:
-              "1px solid rgba(27,58,107,0.08)",
+            borderBottom: "1px solid rgba(27,58,107,0.07)",
             background: "#F8FAFD",
           }}
         >
-          <div>
-            <h3
-              className="font-bold"
-              style={{
-                color: "#0F1E3C",
-                fontFamily:
-                  "'Libre Baskerville', serif",
-              }}
-            >
-              Historial de datos por cohorte
-            </h3>
+          <h3
+            className="text-sm font-semibold"
+            style={{
+              fontFamily: "'Libre Baskerville',serif",
+              color: "#0F1E3C",
+            }}
+          >
+            Historial de datos por cohorte
+          </h3>
 
-            <p
-              className="text-xs mt-1"
-              style={{ color: "#5A7295" }}
-            >
-              Información obtenida desde la base de datos.
-            </p>
-          </div>
+          <p
+            className="text-xs mt-1"
+            style={{ color: "#5A7295" }}
+          >
+            Carrera: {career?.name ?? "—"} · Cohorte seleccionada: {cohort}
+          </p>
         </div>
 
         {cargando ? (
-          <div className="p-6 text-center">
-            Cargando...
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-sm" style={{ color: "#5A7295" }}>
+              Cargando datos...
+            </p>
+          </div>
+        ) : errorCarga ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+            <AlertCircle
+              size={36}
+              className="mb-3"
+              style={{ color: "#DC2626" }}
+            />
+            <p className="text-sm font-semibold" style={{ color: "#DC2626" }}>
+              No se pudieron cargar los datos
+            </p>
+            <p className="text-xs mt-1 max-w-md" style={{ color: "#6B7280" }}>
+              {errorCarga}
+            </p>
+          </div>
+        ) : datos.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+            <TableProperties
+              size={36}
+              className="mb-3"
+              style={{ color: "#D1D5DB" }}
+            />
+            <p className="text-sm font-medium" style={{ color: "#6B7280" }}>
+              Sin datos de cohortes
+            </p>
+            <p className="text-xs mt-1 max-w-sm" style={{ color: "#9CA3AF" }}>
+              Los resultados aparecerán cuando se lean y guarden los PDF de matriculados y graduados.
+            </p>
           </div>
         ) : (
-          <table className="w-full">
-            <thead
-              style={{
-                background: "#EEF2F7",
-              }}
-            >
-              <tr>
-                <th className="px-4 py-3 text-left text-xs">
-                  Cohorte
-                </th>
-
-                <th className="px-4 py-3 text-center text-xs">
-                  Matriculados
-                </th>
-
-                <th className="px-4 py-3 text-center text-xs">
-                  Graduados
-                </th>
-
-                <th className="px-4 py-3 text-center text-xs">
-                  Tasa
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {datos.map((c) => (
-                <tr
-                  key={c.cohorte}
-                  style={{
-                    borderBottom:
-                      "1px solid rgba(27,58,107,0.06)",
-                  }}
-                >
-                  <td className="px-4 py-3">
-                    {c.cohorte}
-                  </td>
-
-                  <td className="px-4 py-3 text-center">
-                    {c.matriculados}
-                  </td>
-
-                  <td className="px-4 py-3 text-center">
-                    {c.graduados}
-                  </td>
-
-                  <td className="px-4 py-3 text-center font-bold">
-                    {c.tasa}%
-                  </td>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(27,58,107,0.07)" }}>
+                  {["Cohorte", "Matriculados", "Graduados", "Tasa", "Estado"].map(
+                    (encabezado) => (
+                      <th
+                        key={encabezado}
+                        className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider"
+                        style={{
+                          color: "#5A7295",
+                          background: "#F8FAFD",
+                        }}
+                      >
+                        {encabezado}
+                      </th>
+                    ),
+                  )}
                 </tr>
-              ))}
+              </thead>
 
-              <tr
-                style={{
-                  background: "#F8FAFD",
-                  fontWeight: 700,
-                }}
-              >
-                <td className="px-4 py-3">
-                  TOTAL
-                </td>
+              <tbody>
+                {datos.map((item, index) => {
+                  const tasa = Number(item.tasa ?? 0);
+                  const estado = getStatus(Math.round(tasa));
+                  const esActual = item.cohorte.replace(/\s+/g, "") === cohort.replace(/\s+/g, "");
 
-                <td className="px-4 py-3 text-center">
-                  {totalMatriculados}
-                </td>
+                  return (
+                    <tr
+                      key={`${item.cohorte}-${index}`}
+                      style={{
+                        borderBottom: "1px solid rgba(27,58,107,0.05)",
+                        background: esActual
+                          ? "#EEF5FF"
+                          : index % 2 === 0
+                            ? "#FFFFFF"
+                            : "#FAFBFD",
+                      }}
+                    >
+                      <td className="px-6 py-3">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="font-bold"
+                            style={{
+                              fontFamily: "'DM Mono',monospace",
+                              color: esActual ? "#1B3A6B" : "#0F1E3C",
+                            }}
+                          >
+                            Cohorte {item.cohorte}
+                          </span>
 
-                <td className="px-4 py-3 text-center">
-                  {totalGraduados}
-                </td>
+                          {esActual && (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full font-bold"
+                              style={{ background: "#1B3A6B", color: "#FFFFFF" }}
+                            >
+                              actual
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
-                <td className="px-4 py-3 text-center">
-                  {tasaGeneral}%
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                      <td className="px-6 py-3" style={{ color: "#374151" }}>
+                        {Number(item.matriculados ?? 0)}
+                      </td>
+
+                      <td className="px-6 py-3" style={{ color: "#374151" }}>
+                        {Number(item.graduados ?? 0)}
+                      </td>
+
+                      <td className="px-6 py-3">
+                        <span
+                          className="font-bold px-2.5 py-1 rounded-lg"
+                          style={{
+                            background: estado.bg,
+                            color: estado.color,
+                            fontFamily: "'DM Mono',monospace",
+                          }}
+                        >
+                          {tasa.toFixed(2)}%
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-3">
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                          style={{ background: estado.bg, color: estado.color }}
+                        >
+                          {estado.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+
+              {datos.length > 1 && (
+                <tfoot>
+                  <tr
+                    style={{
+                      borderTop: "2px solid rgba(27,58,107,0.12)",
+                      background: "#EEF2F7",
+                    }}
+                  >
+                    <td
+                      className="px-6 py-3 text-xs font-bold uppercase"
+                      style={{ color: "#5A7295" }}
+                    >
+                      Totales
+                    </td>
+                    <td className="px-6 py-3 font-bold" style={{ color: "#0F1E3C" }}>
+                      {totalMatriculados}
+                    </td>
+                    <td className="px-6 py-3 font-bold" style={{ color: "#0F1E3C" }}>
+                      {totalGraduados}
+                    </td>
+                    <td className="px-6 py-3 font-bold" style={{ color: "#0F1E3C" }}>
+                      {tasaGeneral.toFixed(2)}%
+                    </td>
+                    <td className="px-6 py-3">
+                      {getStatus(Math.round(tasaGeneral)).label}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         )}
       </div>
     </div>
@@ -590,16 +714,169 @@ function TabResultsI3({ ind, career, cohort, pao }: { ind: IndicatorDef; career:
 // ── Tab Evidencias (split view) ────────────────────────────────────────────
 function TabEvidences({
   ind,
+  career,
+  cohort,
   onUpload,
+  puedeCargar,
 }: {
   ind: IndicatorDef;
+  career: Career | null;
+  cohort: string;
   onUpload?: () => void;
+  puedeCargar: boolean;
 }) {
+  const [slots, setSlots] = useState<IndicatorDef["slots"]>(
+    () => ind.slots.map((slot) => ({ ...slot })),
+  );
+
   const [selected, setSelected] = useState<number | null>(
     ind.slots.find((slot) => slot.file)?.sourceNum ?? null,
   );
 
-  const selectedSlot = ind.slots.find(
+  const [cargandoEvidencias, setCargandoEvidencias] =
+    useState(true);
+
+  useEffect(() => {
+    setSlots(
+      ind.slots.map((slot) => ({ ...slot })),
+    );
+    setSelected(
+      ind.slots.find((slot) => slot.file)?.sourceNum ??
+        null,
+    );
+  }, [ind]);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    async function cargarEvidencias() {
+      if (!career) {
+        if (!cancelado) {
+          setCargandoEvidencias(false);
+        }
+        return;
+      }
+
+      try {
+        setCargandoEvidencias(true);
+
+        const cohorteNormalizada = cohort
+          .replace(/\s+/g, "")
+          .toUpperCase();
+
+        const evaluacion = await obtenerEvaluacion(
+          career.code,
+          cohorteNormalizada,
+        );
+
+        const idIndicador = Number(
+          ind.id.replace(/\D/g, ""),
+        );
+
+        const [guardadas, compartidas] =
+          await Promise.all([
+            obtenerEvidenciasGuardadas(
+              evaluacion.id_evaluacion,
+              idIndicador,
+            ),
+            obtenerEvidenciasCompartidas(
+              evaluacion.id_evaluacion,
+              idIndicador,
+            ),
+          ]);
+
+        if (cancelado) {
+          return;
+        }
+
+        const nuevasSlots = ind.slots.map((slot) => {
+          const propia = guardadas.find(
+            (evidencia) =>
+              Number(evidencia.orden) ===
+              Number(slot.sourceNum),
+          );
+
+          const compartida = compartidas.find(
+            (evidencia) =>
+              Number(evidencia.orden) ===
+              Number(slot.sourceNum),
+          );
+
+          const evidencia = propia ?? compartida;
+
+          if (!evidencia) {
+            return {
+              ...slot,
+              file: undefined,
+            };
+          }
+
+          return {
+            ...slot,
+            file: {
+              fileName: evidencia.nombre_archivo,
+              url: evidencia.url_archivo,
+              serverUrl: evidencia.url_archivo,
+              type: evidencia.tipo,
+              size: 0,
+            } as NonNullable<typeof slot.file>,
+          };
+        });
+
+        setSlots(nuevasSlots);
+
+        const primerArchivo = nuevasSlots.find(
+          (slot) => slot.file,
+        );
+
+        setSelected((actual) => {
+          const seleccionExiste = nuevasSlots.some(
+            (slot) =>
+              slot.sourceNum === actual &&
+              Boolean(slot.file),
+          );
+
+          if (seleccionExiste) {
+            return actual;
+          }
+
+          return primerArchivo?.sourceNum ?? null;
+        });
+      } catch (error) {
+        if (cancelado) {
+          return;
+        }
+
+        console.error(error);
+
+        setSlots(
+          ind.slots.map((slot) => ({ ...slot })),
+        );
+
+        toast.error(
+          "No se pudieron cargar las evidencias guardadas.",
+          {
+            description:
+              error instanceof Error
+                ? error.message
+                : "Ocurrió un error inesperado.",
+          },
+        );
+      } finally {
+        if (!cancelado) {
+          setCargandoEvidencias(false);
+        }
+      }
+    }
+
+    void cargarEvidencias();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [career, cohort, ind]);
+
+  const selectedSlot = slots.find(
     (slot) => slot.sourceNum === selected,
   );
 
@@ -607,21 +884,24 @@ function TabEvidences({
     selectedSlot?.file?.serverUrl ||
     selectedSlot?.file?.url ||
     "";
-  
-  function convertirUrlVistaPrevia(url: string): string {
-  const coincidencia = url.match(
-    /drive\.google\.com\/file\/d\/([^/]+)/,
-  );
 
-  if (!coincidencia) {
-    return url;
+  function convertirUrlVistaPrevia(
+    url: string,
+  ): string {
+    const coincidencia = url.match(
+      /drive\.google\.com\/file\/d\/([^/]+)/,
+    );
+
+    if (!coincidencia) {
+      return url;
+    }
+
+    return `https://drive.google.com/file/d/${coincidencia[1]}/preview`;
   }
 
-  return `https://drive.google.com/file/d/${coincidencia[1]}/preview`;
-}
-
   const urlVistaPrevia =
-  convertirUrlVistaPrevia(urlDocumento);
+    convertirUrlVistaPrevia(urlDocumento);
+
   const hasFile = Boolean(
     selectedSlot?.file && urlDocumento,
   );
@@ -643,12 +923,12 @@ function TabEvidences({
 
   return (
     <div className="h-full flex px-6 py-4 max-w-5xl mx-auto gap-4 overflow-hidden">
-      {/* Lista de fuentes */}
       <div className="w-80 flex-shrink-0 flex flex-col overflow-hidden gap-2">
         <div
           className="bg-white rounded-2xl overflow-hidden flex-1 flex flex-col"
           style={{
-            border: "1px solid rgba(27,58,107,0.08)",
+            border:
+              "1px solid rgba(27,58,107,0.08)",
           }}
         >
           <div
@@ -676,11 +956,11 @@ function TabEvidences({
                 style={{ color: "#5A7295" }}
               >
                 {
-                  ind.slots.filter(
+                  slots.filter(
                     (slot) => slot.file,
                   ).length
                 }
-                /{ind.slots.length} cargadas
+                /{slots.length} cargadas
               </p>
             </div>
 
@@ -692,70 +972,92 @@ function TabEvidences({
             </span>
           </div>
 
-          <div
-            className="flex-1 overflow-auto divide-y"
-            style={{
-              borderColor:
-                "rgba(27,58,107,0.06)",
-            }}
-          >
-            {ind.slots.map((slot) => {
-              const active =
-                selected === slot.sourceNum;
-
-              return (
-                <button
-                  key={slot.sourceNum}
-                  type="button"
-                  onClick={() =>
-                    setSelected(slot.sourceNum)
-                  }
-                  className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 transition-colors hover:bg-blue-50"
+          {cargandoEvidencias ? (
+            <div className="flex-1 flex items-center justify-center px-5 text-center">
+              <div>
+                <div
+                  className="w-7 h-7 mx-auto mb-3 rounded-full border-2 border-t-transparent animate-spin"
                   style={{
-                    background: active
-                      ? "#EEF2F7"
-                      : "transparent",
-                    borderLeft: active
-                      ? "3px solid #1B3A6B"
-                      : "3px solid transparent",
+                    borderColor:
+                      "#1B3A6B transparent #1B3A6B #1B3A6B",
                   }}
+                />
+
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "#5A7295" }}
                 >
-                  <p
-                    className="text-xs font-semibold leading-snug flex-1"
+                  Consultando evidencias...
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="flex-1 overflow-auto divide-y"
+              style={{
+                borderColor:
+                  "rgba(27,58,107,0.06)",
+              }}
+            >
+              {slots.map((slot) => {
+                const active =
+                  selected === slot.sourceNum;
+
+                return (
+                  <button
+                    key={slot.sourceNum}
+                    type="button"
+                    onClick={() =>
+                      setSelected(slot.sourceNum)
+                    }
+                    className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 transition-colors hover:bg-blue-50"
                     style={{
-                      color: active
-                        ? "#1B3A6B"
-                        : "#0F1E3C",
+                      background: active
+                        ? "#EEF2F7"
+                        : "transparent",
+                      borderLeft: active
+                        ? "3px solid #1B3A6B"
+                        : "3px solid transparent",
                     }}
                   >
-                    {slot.label}
-                  </p>
-
-                  {slot.file ? (
-                    <CheckCircle2
-                      size={14}
+                    <p
+                      className="text-xs font-semibold leading-snug flex-1"
                       style={{
-                        color: "#16A34A",
-                        flexShrink: 0,
-                      }}
-                    />
-                  ) : (
-                    <span
-                      className="text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-                      style={{
-                        background: "#FEF9C3",
-                        color: "#92400E",
+                        color: active
+                          ? "#1B3A6B"
+                          : "#0F1E3C",
                       }}
                     >
-                      Pendiente
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+                      {slot.label}
+                    </p>
+
+                    {slot.file ? (
+                      <CheckCircle2
+                        size={14}
+                        style={{
+                          color: "#16A34A",
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : (
+                      <span
+                        className="text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                        style={{
+                          background: "#FEF9C3",
+                          color: "#92400E",
+                        }}
+                      >
+                        Pendiente
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
+        {puedeCargar && (
         <button
           type="button"
           onClick={() =>
@@ -774,13 +1076,14 @@ function TabEvidences({
           <Upload size={12} />
           Cargar evidencias
         </button>
+        )}
       </div>
 
-      {/* Vista previa */}
       <div
         className="flex-1 flex flex-col overflow-hidden bg-white rounded-2xl"
         style={{
-          border: "1px solid rgba(27,58,107,0.08)",
+          border:
+            "1px solid rgba(27,58,107,0.08)",
         }}
       >
         <div
@@ -828,7 +1131,16 @@ function TabEvidences({
         </div>
 
         <div className="flex-1 overflow-hidden flex items-center justify-center min-h-0">
-          {hasFile && selectedSlot?.file ? (
+          {cargandoEvidencias ? (
+            <div className="text-center px-8">
+              <p
+                className="text-sm font-medium"
+                style={{ color: "#6B7280" }}
+              >
+                Cargando documentos...
+              </p>
+            </div>
+          ) : hasFile && selectedSlot?.file ? (
             <iframe
               key={urlVistaPrevia}
               src={urlVistaPrevia}
@@ -889,6 +1201,7 @@ function TabEvidences({
     </div>
   );
 }
+
 // ── Tab Ficha técnica ──────────────────────────────────────────────────────
 // ── EF criteria for I2 (Seguimiento de Syllabus) — 5 EFs, pesos ordinales ──
 const I2_EF_CRITERIA = [

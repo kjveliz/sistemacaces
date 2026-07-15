@@ -1,13 +1,20 @@
+export type RolUsuario =
+  | "administrador"
+  | "coordinador"
+  | "evaluador";
+
+export interface UsuarioSesion {
+  id_usuario: number;
+  nombres: string;
+  apellidos: string;
+  correo: string;
+  rol: RolUsuario;
+}
+
 export interface LoginResponse {
   ok: boolean;
   mensaje: string;
-  usuario?: {
-    id_usuario: number;
-    nombres: string;
-    apellidos: string;
-    correo: string;
-    rol: string;
-  };
+  usuario?: UsuarioSesion;
 }
 
 export async function iniciarSesion(
@@ -35,6 +42,13 @@ export async function iniciarSesion(
   if (!respuesta.ok) {
     throw new Error(
       datos.mensaje || "No se pudo iniciar sesión.",
+    );
+  }
+
+  if (!datos.ok || !datos.usuario) {
+    throw new Error(
+      datos.mensaje ||
+        "El servidor no devolvió los datos del usuario.",
     );
   }
 

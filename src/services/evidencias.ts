@@ -439,25 +439,154 @@ export interface CohorteTitulacion {
 }
 
 export async function obtenerDatosTasa(
-
-idEvaluacion:number
-
-):Promise<CohorteTitulacion[]>{
-
-const respuesta=await fetch(
-
-`http://localhost/sistemacaces/api/tasa_titulacion/obtener.php?id_evaluacion=${idEvaluacion}`,
-
-{
-
-credentials:"include"
-
-}
-
+  idEvaluacion:number
+):  Promise<CohorteTitulacion[]>{
+  const respuesta=await fetch(
+    `http://localhost/sistemacaces/api/tasa_titulacion/obtener.php?id_evaluacion=${idEvaluacion}`,
+  {
+    method: "GET",
+    credentials:"include",
+    headers: {
+        Accept: "application/json",
+    },
+  }
 );
 
 const datos=await respuesta.json();
 
-return datos.datos;
+ if (!respuesta.ok || !datos.ok) {
+    throw new Error(
+      datos.mensaje ||
+        "No se pudieron consultar los datos.",
+    );
+  }
 
+  return datos.datos ?? [];
+
+}
+
+export type TipoDatoTitulacion =
+  | "matriculados"
+  | "graduados";
+
+export interface LecturaPdfTitulacion {
+  tipo_dato: TipoDatoTitulacion;
+  total: number;
+  metodo:
+    | "total_reportado"
+    | "identificaciones_unicas";
+  cohorte_detectada: string | null;
+  periodo_detectado: string | null;
+  identificaciones_detectadas: number;
+}
+
+interface LeerPdfTitulacionResponse {
+  ok: boolean;
+  mensaje: string;
+  datos?: LecturaPdfTitulacion;
+}
+
+export async function leerPdfTitulacion(
+  archivo: File,
+  tipoDato: TipoDatoTitulacion,
+): Promise<LecturaPdfTitulacion> {
+  const formulario = new FormData();
+
+  formulario.append("archivo", archivo);
+  formulario.append("tipo_dato", tipoDato);
+
+  const respuesta = await fetch(
+    "http://localhost/sistemacaces/api/tasa_titulacion/leer_pdf.php",
+    {
+      method: "POST",
+      credentials: "include",
+      body: formulario,
+    },
+  );
+
+  const datos =
+    (await respuesta.json()) as LeerPdfTitulacionResponse;
+
+  if (
+    !respuesta.ok ||
+    !datos.ok ||
+    !datos.datos
+  ) {
+    throw new Error(
+      datos.mensaje ||
+        "No se pudo leer el PDF.",
+    );
+  }
+
+  return datos.datos;
+}
+
+interface GuardarDatoTitulacionParams {
+  idEvaluacion: number;
+  cohorte: string;
+  matriculados?: number;
+  graduados?: number;
+}
+
+export interface DatoTitulacionGuardado {
+  id_evaluacion: number;
+  cohorte: string;
+  matriculados: number | null;
+  graduados: number | null;
+  tasa: number | null;
+}
+
+interface GuardarDatoTitulacionResponse {
+  ok: boolean;
+  mensaje: string;
+  datos?: DatoTitulacionGuardado;
+}
+
+export async function guardarDatoTitulacion({
+  idEvaluacion,
+  cohorte,
+  matriculados,
+  graduados,
+}: GuardarDatoTitulacionParams): Promise<DatoTitulacionGuardado> {
+  const cuerpo: Record<string, string | number> = {
+    id_evaluacion: idEvaluacion,
+    cohorte,
+  };
+
+  if (matriculados !== undefined) {
+    cuerpo.matriculados = matriculados;
+  }
+
+  if (graduados !== undefined) {
+    cuerpo.graduados = graduados;
+  }
+
+  const respuesta = await fetch(
+    "http://localhost/sistemacaces/api/tasa_titulacion/guardar.php",
+    {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(cuerpo),
+    },
+  );
+
+  const datos =
+    (await respuesta.json()) as GuardarDatoTitulacionResponse;
+
+  if (
+    !respuesta.ok ||
+    !datos.ok ||
+    !datos.datos
+  ) {
+    throw new Error(
+      datos.mensaje ||
+        "No se pudo guardar el cálculo.",
+    );
+  }
+
+  return datos.datos;
 }
