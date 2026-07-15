@@ -814,6 +814,7 @@ function TabEvidences({
           return {
             ...slot,
             file: {
+              originalName: evidencia.nombre_archivo,
               fileName: evidencia.nombre_archivo,
               url: evidencia.url_archivo,
               serverUrl: evidencia.url_archivo,
