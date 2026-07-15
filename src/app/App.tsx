@@ -206,6 +206,7 @@ export default function App() {
   const [selectedPAO, setSelectedPAO] =
     useState<number>(1);
 
+  const [idEvaluacion, setIdEvaluacion] = useState<number>(0);
   const selected = indicators.find(
     (indicator) =>
       indicator.id === selectedId,
