@@ -1,5 +1,10 @@
 import { useState } from "react";
+import { useEffect } from "react";
 
+import {
+  obtenerDatosTasa,
+  type CohorteTitulacion,
+} from "../services/evidencias";
 import {
   AlertCircle,
   ArrowLeft,
@@ -101,7 +106,11 @@ export default function IndicatorView({ indicator, onBack, career, cohort, pao, 
       <div className="flex-1 overflow-hidden min-h-0">
         {tab === "results"   && isI2  && <TabResults    ind={indicator} career={career} cohort={cohort} pao={pao} />}
         {tab === "results"   && isI3  && <TabResultsI3  ind={indicator} career={career} cohort={cohort} pao={pao} />}
-        {tab === "cohorts"   && <TabCohorts   ind={indicator} />}
+        {tab === "cohorts" && (
+  <TabCohorts
+    ind={indicator}
+  />
+)}
         {tab === "evidences" && <TabEvidences ind={indicator} onUpload={onUpload} />}
         {tab === "ficha"     && <TabFicha     ind={indicator} />}
       </div>
@@ -413,183 +422,466 @@ function TabResultsI3({ ind, career, cohort, pao }: { ind: IndicatorDef; career:
 }
 
 // ── Tab Cohortes ───────────────────────────────────────────────────────────
-function TabCohorts({ ind }: { ind: IndicatorDef }) {
-  // Sort: most recent (B 2025) first
-  const sorted = [...ind.cohorts].sort((a, b) => {
-    const order = ["B 2025", "A 2025", "B 2024", "A 2024"];
-    return order.indexOf(a.period) - order.indexOf(b.period);
-  });
+  function TabCohorts({
+  ind,
+}: {
+  ind: IndicatorDef;
+}) {
+  const [datos, setDatos] = useState<CohorteTitulacion[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    cargar();
+  }, []);
+
+  async function cargar() {
+    try {
+        const respuesta = await obtenerDatosTasa(1);
+        setDatos(respuesta);
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudieron cargar los datos.");
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  const totalMatriculados = datos.reduce(
+    (s, c) => s + Number(c.matriculados),
+    0,
+  );
+
+  const totalGraduados = datos.reduce(
+    (s, c) => s + Number(c.graduados),
+    0,
+  );
+
+  const tasaGeneral =
+    totalMatriculados === 0
+      ? 0
+      : Number(
+          ((totalGraduados / totalMatriculados) * 100).toFixed(2),
+        );
 
   return (
-    <div className="h-full flex flex-col px-6 py-4 max-w-4xl mx-auto overflow-hidden">
-      <div className="bg-white rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col" style={{ border: "1px solid rgba(27,58,107,0.08)" }}>
-        <div className="px-6 py-4 flex-shrink-0" style={{ borderBottom: "1px solid rgba(27,58,107,0.07)", background: "#F8FAFD" }}>
-          <h3 className="text-sm font-semibold" style={{ fontFamily: "'Libre Baskerville',serif", color: "#0F1E3C" }}>Historial de datos por cohorte</h3>
+    <div className="h-full px-6 py-5 overflow-auto">
+      <div
+        className="bg-white rounded-2xl overflow-hidden"
+        style={{
+          border: "1px solid rgba(27,58,107,0.08)",
+        }}
+      >
+        <div
+          className="px-5 py-4 flex items-center justify-between"
+          style={{
+            borderBottom:
+              "1px solid rgba(27,58,107,0.08)",
+            background: "#F8FAFD",
+          }}
+        >
+          <div>
+            <h3
+              className="font-bold"
+              style={{
+                color: "#0F1E3C",
+                fontFamily:
+                  "'Libre Baskerville', serif",
+              }}
+            >
+              Historial de datos por cohorte
+            </h3>
+
+            <p
+              className="text-xs mt-1"
+              style={{ color: "#5A7295" }}
+            >
+              Información obtenida desde la base de datos.
+            </p>
+          </div>
         </div>
-        {sorted.length === 0
-          ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-              <TableProperties size={36} className="mb-3" style={{ color: "#D1D5DB" }} />
-              <p className="text-sm font-medium" style={{ color: "#6B7280" }}>Sin datos de cohortes</p>
-              <p className="text-xs mt-1 max-w-xs" style={{ color: "#9CA3AF" }}>
-                Los datos se detectarán automáticamente al subir los documentos requeridos en la sección Evidencias.
-              </p>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ borderBottom: "1px solid rgba(27,58,107,0.07)" }}>
-                    {["Cohorte","Matriculados", ind.id === "I4" ? "Desertados" : "Graduados","Tasa","Estado"].map((h) => (
-                      <th key={h} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: "#5A7295", background: "#F8FAFD" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((c, i) => {
-                    const rate = c.enrolled === 0 ? 0 : Math.round((c.graduated / c.enrolled) * 100);
-                    const cs = getStatus(rate);
-                    const isCurrent = i === 0;
-                    return (
-                      <tr key={c.period}
-                        style={{ borderBottom: "1px solid rgba(27,58,107,0.05)", background: isCurrent ? "#EEF5FF" : i % 2 === 0 ? "#fff" : "#FAFBFD" }}>
-                        <td className="px-6 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className={`font-bold ${isCurrent ? "text-base" : "text-sm"}`}
-                              style={{ fontFamily: "'DM Mono',monospace", color: isCurrent ? "#1B3A6B" : "#0F1E3C" }}>
-                              Cohorte {c.period}
-                            </span>
-                            {isCurrent && (
-                              <span className="text-xs px-2 py-0.5 rounded-full font-bold"
-                                style={{ background: "#1B3A6B", color: "#fff" }}>actual</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-3" style={{ color: "#374151", fontSize: isCurrent ? "0.95rem" : undefined, fontWeight: isCurrent ? 600 : undefined }}>{c.enrolled}</td>
-                        <td className="px-6 py-3" style={{ color: "#374151", fontSize: isCurrent ? "0.95rem" : undefined, fontWeight: isCurrent ? 600 : undefined }}>{c.graduated}</td>
-                        <td className="px-6 py-3">
-                          <span className="font-bold px-2.5 py-1 rounded-lg" style={{ background: cs.bg, color: cs.color, fontFamily: "'DM Mono',monospace", fontSize: isCurrent ? "1rem" : "0.875rem" }}>{rate}%</span>
-                        </td>
-                        <td className="px-6 py-3">
-                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: cs.bg, color: cs.color }}>{cs.label}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                {sorted.length > 1 && (() => {
-                  const totE = sorted.reduce((s, c) => s + c.enrolled, 0);
-                  const totG = sorted.reduce((s, c) => s + c.graduated, 0);
-                  const totR = totE === 0 ? 0 : Math.round((totG / totE) * 100);
-                  const ts = getStatus(totR);
-                  return (
-                    <tfoot>
-                      <tr style={{ borderTop: "2px solid rgba(27,58,107,0.12)", background: "#EEF2F7" }}>
-                        <td className="px-6 py-3 text-xs font-bold uppercase" style={{ color: "#5A7295" }}>Totales</td>
-                        <td className="px-6 py-3 font-bold" style={{ color: "#0F1E3C" }}>{totE}</td>
-                        <td className="px-6 py-3 font-bold" style={{ color: "#0F1E3C" }}>{totG}</td>
-                        <td className="px-6 py-3"><span className="font-bold text-sm px-2.5 py-1 rounded-lg" style={{ background: ts.bg, color: ts.color, fontFamily: "'DM Mono',monospace" }}>{totR}%</span></td>
-                        <td className="px-6 py-3"><span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: ts.bg, color: ts.color }}>{ts.label}</span></td>
-                      </tr>
-                    </tfoot>
-                  );
-                })()}
-              </table>
-            </div>
-          )
-        }
+
+        {cargando ? (
+          <div className="p-6 text-center">
+            Cargando...
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead
+              style={{
+                background: "#EEF2F7",
+              }}
+            >
+              <tr>
+                <th className="px-4 py-3 text-left text-xs">
+                  Cohorte
+                </th>
+
+                <th className="px-4 py-3 text-center text-xs">
+                  Matriculados
+                </th>
+
+                <th className="px-4 py-3 text-center text-xs">
+                  Graduados
+                </th>
+
+                <th className="px-4 py-3 text-center text-xs">
+                  Tasa
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {datos.map((c) => (
+                <tr
+                  key={c.cohorte}
+                  style={{
+                    borderBottom:
+                      "1px solid rgba(27,58,107,0.06)",
+                  }}
+                >
+                  <td className="px-4 py-3">
+                    {c.cohorte}
+                  </td>
+
+                  <td className="px-4 py-3 text-center">
+                    {c.matriculados}
+                  </td>
+
+                  <td className="px-4 py-3 text-center">
+                    {c.graduados}
+                  </td>
+
+                  <td className="px-4 py-3 text-center font-bold">
+                    {c.tasa}%
+                  </td>
+                </tr>
+              ))}
+
+              <tr
+                style={{
+                  background: "#F8FAFD",
+                  fontWeight: 700,
+                }}
+              >
+                <td className="px-4 py-3">
+                  TOTAL
+                </td>
+
+                <td className="px-4 py-3 text-center">
+                  {totalMatriculados}
+                </td>
+
+                <td className="px-4 py-3 text-center">
+                  {totalGraduados}
+                </td>
+
+                <td className="px-4 py-3 text-center">
+                  {tasaGeneral}%
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
 }
 
 // ── Tab Evidencias (split view) ────────────────────────────────────────────
-function TabEvidences({ ind, onUpload }: { ind: IndicatorDef; onUpload?: () => void }) {
-  const [selected, setSelected] = useState<number | null>(ind.slots.find((s) => s.file)?.sourceNum ?? null);
+function TabEvidences({
+  ind,
+  onUpload,
+}: {
+  ind: IndicatorDef;
+  onUpload?: () => void;
+}) {
+  const [selected, setSelected] = useState<number | null>(
+    ind.slots.find((slot) => slot.file)?.sourceNum ?? null,
+  );
 
-  const selectedSlot = ind.slots.find((s) => s.sourceNum === selected);
-  const hasFile = !!selectedSlot?.file;
+  const selectedSlot = ind.slots.find(
+    (slot) => slot.sourceNum === selected,
+  );
+
+  const urlDocumento =
+    selectedSlot?.file?.serverUrl ||
+    selectedSlot?.file?.url ||
+    "";
+  
+  function convertirUrlVistaPrevia(url: string): string {
+  const coincidencia = url.match(
+    /drive\.google\.com\/file\/d\/([^/]+)/,
+  );
+
+  if (!coincidencia) {
+    return url;
+  }
+
+  return `https://drive.google.com/file/d/${coincidencia[1]}/preview`;
+}
+
+  const urlVistaPrevia =
+  convertirUrlVistaPrevia(urlDocumento);
+  const hasFile = Boolean(
+    selectedSlot?.file && urlDocumento,
+  );
+
+  function abrirDocumento() {
+    if (!urlDocumento) {
+      toast.error(
+        "La evidencia no contiene una URL válida.",
+      );
+      return;
+    }
+
+    window.open(
+      urlDocumento,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  }
 
   return (
     <div className="h-full flex px-6 py-4 max-w-5xl mx-auto gap-4 overflow-hidden">
-      {/* Left: list */}
+      {/* Lista de fuentes */}
       <div className="w-80 flex-shrink-0 flex flex-col overflow-hidden gap-2">
-        <div className="bg-white rounded-2xl overflow-hidden flex-1 flex flex-col" style={{ border: "1px solid rgba(27,58,107,0.08)" }}>
-          <div className="px-4 py-3 flex-shrink-0 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(27,58,107,0.07)", background: "#F8FAFD" }}>
+        <div
+          className="bg-white rounded-2xl overflow-hidden flex-1 flex flex-col"
+          style={{
+            border: "1px solid rgba(27,58,107,0.08)",
+          }}
+        >
+          <div
+            className="px-4 py-3 flex-shrink-0 flex items-center justify-between"
+            style={{
+              borderBottom:
+                "1px solid rgba(27,58,107,0.07)",
+              background: "#F8FAFD",
+            }}
+          >
             <div>
-              <h3 className="text-xs font-bold" style={{ fontFamily: "'Libre Baskerville',serif", color: "#0F1E3C" }}>Fuentes de información</h3>
-              <p className="text-xs mt-0.5" style={{ color: "#5A7295" }}>{ind.slots.filter((s) => s.file).length}/{ind.slots.length} cargadas</p>
+              <h3
+                className="text-xs font-bold"
+                style={{
+                  fontFamily:
+                    "'Libre Baskerville',serif",
+                  color: "#0F1E3C",
+                }}
+              >
+                Fuentes de información
+              </h3>
+
+              <p
+                className="text-xs mt-0.5"
+                style={{ color: "#5A7295" }}
+              >
+                {
+                  ind.slots.filter(
+                    (slot) => slot.file,
+                  ).length
+                }
+                /{ind.slots.length} cargadas
+              </p>
             </div>
-            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#5A7295" }}>Estado</span>
+
+            <span
+              className="text-xs font-bold uppercase tracking-widest"
+              style={{ color: "#5A7295" }}
+            >
+              Estado
+            </span>
           </div>
-          <div className="flex-1 overflow-auto divide-y" style={{ borderColor: "rgba(27,58,107,0.06)" }}>
+
+          <div
+            className="flex-1 overflow-auto divide-y"
+            style={{
+              borderColor:
+                "rgba(27,58,107,0.06)",
+            }}
+          >
             {ind.slots.map((slot) => {
-              const active = selected === slot.sourceNum;
+              const active =
+                selected === slot.sourceNum;
+
               return (
-                <button key={slot.sourceNum}
-                  onClick={() => setSelected(slot.sourceNum)}
-                  className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 transition-colors hover:bg-blue-50"
-                  style={{ background: active ? "#EEF2F7" : "transparent", borderLeft: active ? "3px solid #1B3A6B" : "3px solid transparent" }}>
-                  <p className="text-xs font-semibold leading-snug flex-1" style={{ color: active ? "#1B3A6B" : "#0F1E3C" }}>{slot.label}</p>
-                  {slot.file
-                    ? <CheckCircle2 size={14} style={{ color: "#16A34A", flexShrink: 0 }} />
-                    : <span className="text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-                        style={{ background: "#FEF9C3", color: "#92400E" }}>Pendiente</span>
+                <button
+                  key={slot.sourceNum}
+                  type="button"
+                  onClick={() =>
+                    setSelected(slot.sourceNum)
                   }
+                  className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 transition-colors hover:bg-blue-50"
+                  style={{
+                    background: active
+                      ? "#EEF2F7"
+                      : "transparent",
+                    borderLeft: active
+                      ? "3px solid #1B3A6B"
+                      : "3px solid transparent",
+                  }}
+                >
+                  <p
+                    className="text-xs font-semibold leading-snug flex-1"
+                    style={{
+                      color: active
+                        ? "#1B3A6B"
+                        : "#0F1E3C",
+                    }}
+                  >
+                    {slot.label}
+                  </p>
+
+                  {slot.file ? (
+                    <CheckCircle2
+                      size={14}
+                      style={{
+                        color: "#16A34A",
+                        flexShrink: 0,
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={{
+                        background: "#FEF9C3",
+                        color: "#92400E",
+                      }}
+                    >
+                      Pendiente
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
         </div>
+
         <button
-          onClick={() => onUpload ? onUpload() : toast.info("Use el botón 'Cargar evidencias' desde el panel principal")}
+          type="button"
+          onClick={() =>
+            onUpload
+              ? onUpload()
+              : toast.info(
+                  "Use el botón 'Cargar evidencias' desde el panel principal",
+                )
+          }
           className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all hover:opacity-90"
-          style={{ background: "#1B3A6B", color: "#fff" }}>
-          <Upload size={12} /> Cargar evidencias
+          style={{
+            background: "#1B3A6B",
+            color: "#fff",
+          }}
+        >
+          <Upload size={12} />
+          Cargar evidencias
         </button>
       </div>
 
-      {/* Right: preview */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-white rounded-2xl" style={{ border: "1px solid rgba(27,58,107,0.08)" }}>
-        <div className="px-5 py-3 flex items-center justify-between flex-shrink-0"
-          style={{ borderBottom: "1px solid rgba(27,58,107,0.07)", background: "#F8FAFD" }}>
-          <div>
-            <h3 className="text-xs font-bold" style={{ color: "#0F1E3C" }}>
-              {selectedSlot ? selectedSlot.label : "Vista previa"}
+      {/* Vista previa */}
+      <div
+        className="flex-1 flex flex-col overflow-hidden bg-white rounded-2xl"
+        style={{
+          border: "1px solid rgba(27,58,107,0.08)",
+        }}
+      >
+        <div
+          className="px-5 py-3 flex items-center justify-between flex-shrink-0"
+          style={{
+            borderBottom:
+              "1px solid rgba(27,58,107,0.07)",
+            background: "#F8FAFD",
+          }}
+        >
+          <div className="min-w-0">
+            <h3
+              className="text-xs font-bold"
+              style={{ color: "#0F1E3C" }}
+            >
+              {selectedSlot
+                ? selectedSlot.label
+                : "Vista previa"}
             </h3>
+
             {selectedSlot?.file && (
-              <p className="text-xs mt-0.5 font-mono" style={{ color: "#5A7295" }}>{selectedSlot.file.fileName}</p>
+              <p
+                className="text-xs mt-0.5 font-mono truncate"
+                style={{ color: "#5A7295" }}
+              >
+                {selectedSlot.file.fileName}
+              </p>
             )}
           </div>
-          {hasFile && selectedSlot?.file && (
-            <a href={selectedSlot.file.url} target="_blank" rel="noreferrer"
+
+          {hasFile && (
+            <button
+              type="button"
+              onClick={abrirDocumento}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90"
-              style={{ background: "#1B3A6B", color: "#fff" }}>
-              <ExternalLink size={11} /> Abrir documento
-            </a>
+              style={{
+                background: "#1B3A6B",
+                color: "#fff",
+              }}
+            >
+              <ExternalLink size={11} />
+              Abrir documento
+            </button>
           )}
         </div>
+
         <div className="flex-1 overflow-hidden flex items-center justify-center min-h-0">
           {hasFile && selectedSlot?.file ? (
             <iframe
-              src={selectedSlot.file.url}
+              key={urlVistaPrevia}
+              src={urlVistaPrevia}
               className="w-full h-full"
               title={selectedSlot.file.fileName}
               style={{ border: "none" }}
+              allow="autoplay"
             />
           ) : selectedSlot ? (
             <div className="text-center px-8">
-              <AlertCircle size={40} className="mx-auto mb-3" style={{ color: "#D1D5DB" }} />
-              <p className="text-sm font-medium" style={{ color: "#6B7280" }}>Sin documento cargado</p>
-              <p className="text-xs mt-1" style={{ color: "#9CA3AF" }}>
-                Esta fuente aún no tiene archivo. Use "Cargar evidencias" desde el panel principal.
+              <AlertCircle
+                size={40}
+                className="mx-auto mb-3"
+                style={{ color: "#D1D5DB" }}
+              />
+
+              <p
+                className="text-sm font-medium"
+                style={{ color: "#6B7280" }}
+              >
+                Sin documento cargado
+              </p>
+
+              <p
+                className="text-xs mt-1"
+                style={{ color: "#9CA3AF" }}
+              >
+                Esta fuente aún no tiene archivo.
+                Use “Cargar evidencias”.
               </p>
             </div>
           ) : (
             <div className="text-center px-8">
-              <FolderOpen size={40} className="mx-auto mb-3" style={{ color: "#D1D5DB" }} />
-              <p className="text-sm font-medium" style={{ color: "#6B7280" }}>Seleccione una fuente</p>
-              <p className="text-xs mt-1" style={{ color: "#9CA3AF" }}>Haga clic en una fuente de la lista para ver su vista previa.</p>
+              <FolderOpen
+                size={40}
+                className="mx-auto mb-3"
+                style={{ color: "#D1D5DB" }}
+              />
+
+              <p
+                className="text-sm font-medium"
+                style={{ color: "#6B7280" }}
+              >
+                Seleccione una fuente
+              </p>
+
+              <p
+                className="text-xs mt-1"
+                style={{ color: "#9CA3AF" }}
+              >
+                Haga clic en una fuente para
+                visualizar el documento.
+              </p>
             </div>
           )}
         </div>
@@ -597,7 +889,6 @@ function TabEvidences({ ind, onUpload }: { ind: IndicatorDef; onUpload?: () => v
     </div>
   );
 }
-
 // ── Tab Ficha técnica ──────────────────────────────────────────────────────
 // ── EF criteria for I2 (Seguimiento de Syllabus) — 5 EFs, pesos ordinales ──
 const I2_EF_CRITERIA = [

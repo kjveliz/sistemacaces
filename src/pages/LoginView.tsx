@@ -1,9 +1,9 @@
 import { iniciarSesion } from "../services/auth";
+
 import { useState } from "react";
 import {
   Eye,
   EyeOff,
-  ShieldCheck,
   User,
 } from "lucide-react";
 
@@ -67,21 +67,14 @@ export default function LoginView({
             "linear-gradient(150deg,#0F2556 0%,#1B3A6B 55%,#1E4A8A 100%)",
         }}
       >
-        <div>
-          <div className="flex items-center gap-3 mb-12">
-            <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center"
-              style={{
-                background: "rgba(255,255,255,0.15)",
-              }}
-            >
-              <ShieldCheck size={22} />
-            </div>
-
-            <span className="text-lg font-semibold tracking-wide">
-              CACES · UAFTT
-            </span>
-          </div>
+       <div>
+  <div className="flex justify-center mb-10">
+    <img
+      src="/LOGO-UCSG-TEC-FULL-COLOR.png"
+      alt="UCSG TEC"
+      className="w-40 h-auto object-contain"
+    />
+  </div> 
 
           <h1
             className="text-4xl font-bold leading-tight mb-4"
@@ -98,7 +91,7 @@ export default function LoginView({
 
           <p className="text-blue-200 text-sm leading-relaxed max-w-xs">
             Modelo de evaluación para Unidades Académicas de
-            Formación Técnica y Tecnológica 
+            Formación Técnica y Tecnológica - CACES 
           </p>
         </div>
 

@@ -319,3 +319,145 @@ export async function obtenerEvidenciasCompartidas(
   return datos.datos;
 }
 
+export interface SubirDriveResponse {
+  ok: boolean;
+  mensaje: string;
+  datos?: {
+    id_archivo: string;
+    nombre_archivo: string;
+    url_archivo: string;
+    url_descarga?: string | null;
+    id_carpeta: string;
+    codigo_carrera: string;
+    nombre_carrera: string;
+    cohorte: string;
+    indicador: number;
+  };
+}
+
+interface SubirDriveParams {
+  archivo: File;
+  codigoCarrera: string;
+  nombreCarrera: string;
+  cohorte: string;
+  indicador: number;
+  nombreArchivo: string;
+}
+
+export async function subirPdfGoogleDrive({
+  archivo,
+  codigoCarrera,
+  nombreCarrera,
+  cohorte,
+  indicador,
+  nombreArchivo,
+}: SubirDriveParams): Promise<SubirDriveResponse> {
+  const formulario = new FormData();
+
+  formulario.append("archivo", archivo);
+  formulario.append("codigo_carrera", codigoCarrera);
+  formulario.append("nombre_carrera", nombreCarrera);
+  formulario.append("cohorte", cohorte);
+  formulario.append("indicador", String(indicador));
+  formulario.append("nombre_archivo", nombreArchivo);
+
+  const respuesta = await fetch(
+    "http://localhost/sistemacaces/api/google_drive/subir_archivo.php",
+    {
+      method: "POST",
+      credentials: "include",
+      body: formulario,
+    },
+  );
+
+  const datos =
+    (await respuesta.json()) as SubirDriveResponse;
+
+  if (!respuesta.ok || !datos.ok || !datos.datos) {
+    throw new Error(
+      datos.mensaje ||
+        "No se pudo subir el PDF a Google Drive.",
+    );
+  }
+
+  return datos;
+}
+
+export interface LecturaMatriculadosResponse {
+  ok: boolean;
+  mensaje: string;
+  datos?: {
+    matriculados: number;
+    periodo: string | null;
+    cohorte_detectada: string | null;
+  };
+}
+
+export async function leerMatriculadosPdf(
+  archivo: File,
+): Promise<LecturaMatriculadosResponse> {
+  const formulario = new FormData();
+
+  formulario.append("archivo", archivo);
+
+  const respuesta = await fetch(
+    "http://localhost/sistemacaces/api/evidencias/leer_matriculados.php",
+    {
+      method: "POST",
+      credentials: "include",
+      body: formulario,
+    },
+  );
+
+  const datos =
+    (await respuesta.json()) as LecturaMatriculadosResponse;
+
+  if (
+    !respuesta.ok ||
+    !datos.ok ||
+    !datos.datos
+  ) {
+    throw new Error(
+      datos.mensaje ||
+        "No se pudo leer el PDF de matriculados.",
+    );
+  }
+
+  return datos;
+}
+
+export interface CohorteTitulacion {
+
+  cohorte:string;
+
+  matriculados:number;
+
+  graduados:number;
+
+  tasa:number;
+
+}
+
+export async function obtenerDatosTasa(
+
+idEvaluacion:number
+
+):Promise<CohorteTitulacion[]>{
+
+const respuesta=await fetch(
+
+`http://localhost/sistemacaces/api/tasa_titulacion/obtener.php?id_evaluacion=${idEvaluacion}`,
+
+{
+
+credentials:"include"
+
+}
+
+);
+
+const datos=await respuesta.json();
+
+return datos.datos;
+
+}

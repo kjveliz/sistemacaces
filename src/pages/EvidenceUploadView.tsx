@@ -20,6 +20,8 @@ import {
   guardarEvidencia,
   obtenerEvidenciasGuardadas,
   obtenerEvidenciasCompartidas,
+  subirPdfGoogleDrive,
+  leerMatriculadosPdf,
 } from "../services/evidencias";
 
 import {
@@ -352,13 +354,25 @@ useEffect(() => {
     return;
   }
 
+  if (!slot.codigoEvidencia) {
+    toast.error(
+      "La evidencia no tiene código asignado.",
+    );
+    return;
+  }
+
   if (!indicator) {
-    toast.error("No se encontró el indicador seleccionado.");
+    toast.error(
+      "No se encontró el indicador seleccionado.",
+    );
     return;
   }
 
   try {
-    const respuesta = await prepararPdf({
+    /*
+     * 1. Validar el PDF y generar el nombre técnico.
+     */
+    const preparacion = await prepararPdf({
       archivo,
       idCatalogo: slot.idCatalogo,
       codigoCarrera: career.code,
@@ -367,164 +381,164 @@ useEffect(() => {
       indicador: indicator.num,
     });
 
-    if (!respuesta.datos) {
+    if (!preparacion.datos) {
       throw new Error(
-        "El servidor no devolvió la información del archivo.",
+        "El servidor no devolvió la información del PDF.",
       );
     }
 
+    let matriculadosDetectados: number | null = null;
+
+if (slot.codigoEvidencia === "DOC.TIT.02") {
+  const lectura = await leerMatriculadosPdf(
+    archivo,
+  );
+
+  matriculadosDetectados =
+    lectura.datos?.matriculados ?? null;
+
+  if (
+    lectura.datos?.cohorte_detectada &&
+    lectura.datos.cohorte_detectada !==
+      cohort.replace(/\s+/g, "")
+  ) {
+    throw new Error(
+      `El PDF corresponde a la cohorte ${lectura.datos.cohorte_detectada}, pero seleccionó ${cohort}.`,
+    );
+  }
+}
+    /*
+     * 2. Subir o reemplazar el archivo en Google Drive.
+     */
+    const drive = await subirPdfGoogleDrive({
+      archivo,
+      codigoCarrera: career.code,
+      nombreCarrera: career.name,
+      cohorte: cohort.replace(/\s+/g, ""),
+      indicador: indicator.num,
+      nombreArchivo:
+        preparacion.datos.nombre_generado,
+    });
+
+    const urlDrive =
+      drive.datos?.url_archivo?.trim() ?? "";
+
+    if (
+      !urlDrive.startsWith(
+        "https://drive.google.com/",
+      )
+    ) {
+      throw new Error(
+        "Google Drive no devolvió una URL válida.",
+      );
+    }
+
+    /*
+     * 3. Obtener la evaluación correspondiente.
+     */
+    const evaluacion = await obtenerEvaluacion(
+      career.code,
+      cohort.replace(/\s+/g, ""),
+    );
+
+    /*
+     * 4. Registrar o actualizar inmediatamente
+     * la URL de Google Drive en MySQL.
+     */
+    const guardado = await guardarEvidencia({
+      idCatalogo: slot.idCatalogo,
+      idEvaluacion:
+        evaluacion.id_evaluacion,
+      codigoEvidencia:
+        slot.codigoEvidencia,
+      descripcion:
+        slot.descripcionCompleta ??
+        slot.label,
+      nombreArchivo:
+        preparacion.datos.nombre_generado,
+      tipo: "application/pdf",
+      urlArchivo: urlDrive,
+    });
+
+    if (!guardado.id_evidencia) {
+      throw new Error(
+        "MySQL no devolvió el identificador de la evidencia.",
+      );
+    }
+
+    /*
+     * 5. Actualizar la interfaz.
+     */
     updateSlot(indicator.id, {
       ...slot,
+      idEvidencia:
+        guardado.id_evidencia,
       error: undefined,
       file: {
-        fileName: respuesta.datos.nombre_generado,
+        fileName:
+          preparacion.datos.nombre_generado,
         originalName: archivo.name,
-        url: URL.createObjectURL(archivo),
+        url: urlDrive,
+        serverUrl: urlDrive,
         size: archivo.size,
-        rawFile: archivo,
-        serverUrl: respuesta.datos.url_archivo,
       },
     });
 
-    toast.success("PDF validado correctamente", {
-      description: respuesta.datos.nombre_generado,
-    });
+    toast.success(
+      "PDF guardado correctamente",
+      {
+        description:
+          matriculadosDetectados !== null
+            ? `Google Drive y MySQL actualizados. Matriculados detectados: ${matriculadosDetectados}.`
+            : "El documento se subió a Google Drive y su URL se actualizó en MySQL.",
+      },
+    );
   } catch (error) {
     updateSlot(indicator.id, {
       ...slot,
-      file: undefined,
       error:
         error instanceof Error
           ? error.message
           : "No se pudo procesar el PDF.",
     });
 
-    toast.error("No se pudo procesar el archivo", {
-      description:
-        error instanceof Error
-          ? error.message
-          : undefined,
-    });
+    toast.error(
+      "No se pudo guardar el archivo",
+      {
+        description:
+          error instanceof Error
+            ? error.message
+            : "Ocurrió un error inesperado.",
+      },
+    );
   }
 }
 
   async function guardarEvidenciasSeleccionadas() {
   if (!indicator) {
-    toast.error("No se encontró el indicador seleccionado.");
+    toast.error(
+      "No se encontró el indicador seleccionado.",
+    );
     return;
   }
 
-  const slotsPendientes = indicator.slots.filter(
-    (slot) => slot.file && !slot.idEvidencia,
+  const cargadas =
+    indicator.slots.filter(
+      (slot) => slot.idEvidencia && slot.file,
+    ).length;
+
+  if (cargadas === 0) {
+    toast.error(
+      "Debe cargar al menos una evidencia.",
+    );
+    return;
+  }
+
+  toast.success(
+    "Cambios guardados correctamente",
   );
 
-  if (slotsPendientes.length === 0) {
-    const yaGuardadas = indicator.slots.some(
-      (slot) => slot.idEvidencia,
-    );
-
-    if (yaGuardadas) {
-      toast.info("Las evidencias seleccionadas ya están registradas.");
-      onBack();
-      return;
-    }
-
-    toast.error("Debe seleccionar al menos un archivo PDF.");
-    return;
-  }
-
-  setGuardando(true);
-
-  try {
-    const evaluacion = await obtenerEvaluacion(
-      career.code,
-      cohort.replace(/\s+/g, ""),
-    );
-
-    const resultados = await Promise.all(
-      slotsPendientes.map(async (slot) => {
-        if (
-          !slot.file ||
-          !slot.idCatalogo ||
-          !slot.codigoEvidencia
-        ) {
-          throw new Error(
-            `La fuente ${slot.sourceNum} no tiene todos los datos requeridos.`,
-          );
-        }
-
-        const respuesta = await guardarEvidencia({
-          idCatalogo: slot.idCatalogo,
-          idEvaluacion: evaluacion.id_evaluacion,
-          codigoEvidencia: slot.codigoEvidencia,
-          descripcion:
-            slot.descripcionCompleta ?? slot.label,
-          nombreArchivo: slot.file.fileName,
-          tipo: "application/pdf",
-
-          // Se completará con la URL real cuando conectemos OneDrive.
-          urlArchivo: slot.file.serverUrl ?? "",
-        });
-
-        if (!respuesta.id_evidencia) {
-          throw new Error(
-            `No se recibió el identificador de la evidencia ${slot.codigoEvidencia}.`,
-          );
-        }
-
-        return {
-          sourceNum: slot.sourceNum,
-          idEvidencia: respuesta.id_evidencia,
-        };
-      }),
-    );
-
-    const identificadores = new Map(
-      resultados.map((resultado) => [
-        resultado.sourceNum,
-        resultado.idEvidencia,
-      ]),
-    );
-
-    onChange(
-      indicators.map((ind) => {
-        if (ind.id !== indicator.id) {
-          return ind;
-        }
-
-        return {
-          ...ind,
-          slots: ind.slots.map((slot) => {
-            const idEvidencia = identificadores.get(
-              slot.sourceNum,
-            );
-
-            return idEvidencia
-              ? {
-                  ...slot,
-                  idEvidencia,
-                }
-              : slot;
-          }),
-        };
-      }),
-    );
-
-    toast.success("Evidencias registradas correctamente", {
-      description: `${resultados.length} documento(s) guardado(s) en MySQL.`,
-    });
-
-    onBack();
-  } catch (error) {
-    toast.error("No se pudieron guardar las evidencias", {
-      description:
-        error instanceof Error
-          ? error.message
-          : "Ocurrió un error inesperado.",
-    });
-  } finally {
-    setGuardando(false);
-  }
+  onBack();
 }
 
   // Step 1: Select indicator
