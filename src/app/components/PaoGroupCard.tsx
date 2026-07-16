@@ -17,7 +17,14 @@ export default function PaoGroupCard({
   onClick,
   fullHeight = false,
 }: PaoGroupCardProps) {
-  const paos = PAO_SCORES[ind.id] || [];
+  const paos =
+  ind.id === "I1"
+    ? [
+        { pao: "PAO 1", pct: -1 },
+        { pao: "PAO 2", pct: -1 },
+        { pao: "PAO 3", pct: -1 },
+      ]
+    : PAO_SCORES[ind.id] || [];
 
   const accent =
     ind.id === "I1"
@@ -74,7 +81,15 @@ export default function PaoGroupCard({
 
       <div className="flex flex-1 min-h-0">
         {paos.map((pao, index) => {
-          const status = getStatus(pao.pct);
+          const sinDatos = pao.pct < 0;
+
+          const status = sinDatos
+            ? {
+                label: "Sin datos",
+                color: "#6B7280",
+                bg: "#F3F4F6",
+              }
+            : getStatus(pao.pct);
 
           return (
             <button
@@ -102,16 +117,30 @@ export default function PaoGroupCard({
                 {pao.pao}
               </span>
 
-              <Ring
-                pct={pao.pct}
-                r={24}
-                sw={5}
-              />
+              {!sinDatos ? (
+                <>
+                  <Ring
+                    pct={pao.pct}
+                    r={24}
+                    sw={5}
+                  />
 
-              <SemLight
-                pct={pao.pct}
-                dot={7}
-              />
+                  <SemLight
+                    pct={pao.pct}
+                    dot={7}
+                  />
+                </>
+              ) : (
+                <div
+                  className="w-14 h-14 rounded-full flex items-center justify-center text-[11px] font-semibold"
+                  style={{
+                    background: "#F3F4F6",
+                    color: "#6B7280",
+                  }}
+                >
+                  —
+                </div>
+              )}
 
               <span
                 className="text-xs font-semibold px-2 py-0.5 rounded-full text-center leading-tight"
